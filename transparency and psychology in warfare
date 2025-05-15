@@ -1,0 +1,137 @@
+from enum import Enum
+import random
+
+# Définition des types d'actions possibles pour les unités
+class Action(Enum):
+    MOVE = 'move'
+    ATTACK = 'attack'
+    DEFEND = 'defend'
+
+# Représente une unité appartenant à un joueur
+class Unit:
+    def __init__(self, player_id, position):
+        self.player_id = player_id
+        self.position = position  # sommet (0 à 6)
+        self.action = None
+        self.defend_counter = 0
+        self.alive = True
+
+    def __repr__(self):
+        return f"Unit(P{self.player_id}, Pos:{self.position}, Alive:{self.alive})"
+
+# Plateau: 6 sommets externes (0 à 5), 1 central (6)
+# Sommets 0-2 pour Joueur A, 3-5 pour Joueur B
+# Chaque sommet est connecté au centre (6), et le centre est connecté à tous
+ADJACENCY = {
+    0: [6], 1: [6], 2: [6],
+    3: [6], 4: [6], 5: [6],
+    6: [0,1,2,3,4,5]
+}
+
+class Game:
+    def __init__(self):
+        self.units = []
+        # Crée 3 unités pour chaque joueur sur les sommets correspondants
+        self.units += [Unit(1, i) for i in range(0, 3)]
+        self.units += [Unit(2, i) for i in range(3, 6)]
+        self.turn = 0
+
+    def is_adjacent(self, pos1, pos2):
+        return pos2 in ADJACENCY[pos1]
+
+    def get_unit_at(self, position):
+        for u in self.units:
+            if u.position == position and u.alive:
+                return u
+        return None
+
+    def issue_orders(self, player_id, orders):
+        # orders: dict de position -> (action, target_position)
+        for u in self.units:
+            if u.player_id == player_id and u.alive:
+                if u.position in orders:
+                    action, target = orders[u.position]
+                    u.action = action
+                    u.target = target
+                else:
+                    u.action = None
+                    u.target = None
+
+    def resolve_orders(self):
+        move_intents = {}
+        attack_intents = []
+        defend_positions = set()
+
+        for u in self.units:
+            if not u.alive:
+                continue
+            if u.action == Action.MOVE:
+                if self.is_adjacent(u.position, u.target):
+                    move_intents[u] = u.target
+            elif u.action == Action.ATTACK:
+                if self.is_adjacent(u.position, u.target):
+                    attack_intents.append((u, u.target))
+            elif u.action == Action.DEFEND:
+                defend_positions.add(u.position)
+                u.defend_counter += 1
+                if u.defend_counter >= 3:
+                    u.alive = False
+                    print(f"Unit at {u.position} lost due to over-defending.")
+            else:
+                u.defend_counter = 0
+
+        # Résolution des attaques
+        for attacker, target_pos in attack_intents:
+            defender = self.get_unit_at(target_pos)
+            if defender is None:
+                attacker.position = target_pos  # attaque libre
+            elif defender.action == Action.ATTACK and defender.target == attacker.position:
+                # attaque croisée : rien ne se passe
+                continue
+            elif defender.action == Action.DEFEND:
+                attacker.alive = False
+                print(f"Attacker at {attacker.position} lost attacking {target_pos} defended.")
+            else:
+                defender.alive = False
+                attacker.position = target_pos
+                print(f"Attacker from {attacker.position} captured {target_pos}.")
+
+        # Résolution des mouvements
+        for unit, target in move_intents.items():
+            if self.get_unit_at(target) is None:
+                unit.position = target
+
+        # Reset actions
+        for u in self.units:
+            u.action = None
+            u.target = None
+
+        self.turn += 1
+
+    def print_state(self):
+        print(f"--- Turn {self.turn} ---")
+        for u in self.units:
+            if u.alive:
+                print(u)
+        print("-------------------\n")
+
+# Exemple de boucle de partie simplifiée
+g = Game()
+g.print_state()
+
+# Simuler des ordres pour un tour
+orders_p1 = {
+    0: (Action.MOVE, 6),
+    1: (Action.ATTACK, 4),
+    2: (Action.DEFEND, None)
+}
+orders_p2 = {
+    3: (Action.ATTACK, 1),
+    4: (Action.DEFEND, None),
+    5: (Action.MOVE, 6)
+}
+
+g.issue_orders(1, orders_p1)
+g.issue_orders(2, orders_p2)
+g.resolve_orders()
+g.print_state()
